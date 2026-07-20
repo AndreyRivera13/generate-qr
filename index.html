@@ -5,23 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Generador de código QR</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     background: #f4f5f7;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    padding: 40px 16px;
   }
   .card {
     background: #fff;
     border-radius: 16px;
     padding: 32px;
-    width: 380px;
-    max-width: 90vw;
+    width: 460px;
+    max-width: 92vw;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     text-align: center;
   }
@@ -30,15 +32,46 @@
     margin: 0 0 20px;
     color: #1a1a1a;
   }
-  input[type="text"] {
+  .tabs {
+    display: flex;
+    gap: 6px;
+    background: #eef0f3;
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 20px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab.active {
+    background: #fff;
+    color: #6c5ce7;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  input[type="text"], textarea {
     width: 100%;
     padding: 12px 14px;
     border: 1px solid #d8dadf;
     border-radius: 8px;
     font-size: 14px;
     outline: none;
+    font-family: inherit;
+    resize: vertical;
   }
-  input[type="text"]:focus {
+  textarea {
+    min-height: 130px;
+    line-height: 1.5;
+  }
+  input[type="text"]:focus, textarea:focus {
     border-color: #6c5ce7;
   }
   .row {
@@ -54,7 +87,7 @@
     border: 1px solid #d8dadf;
     font-size: 13px;
   }
-  button {
+  button.primary, button.secondary {
     margin-top: 16px;
     width: 100%;
     padding: 12px;
@@ -67,7 +100,12 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  button:hover { background: #5a4bd6; }
+  button.primary:hover { background: #5a4bd6; }
+  button.secondary {
+    background: #2d3436;
+    display: none;
+  }
+  button.secondary:hover { background: #1a1e1e; }
   #qrcode {
     margin: 24px auto 8px;
     display: flex;
@@ -75,46 +113,105 @@
     min-height: 200px;
     align-items: center;
   }
-  #qrcode img, #qrcode canvas {
+  #qrcode canvas {
     border-radius: 8px;
   }
-  #downloadBtn {
-    display: none;
-    background: #2d3436;
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 20px;
   }
-  #downloadBtn:hover { background: #1a1e1e; }
+  .grid-item {
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .grid-item canvas {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+  .grid-item .label {
+    font-size: 11px;
+    color: #666;
+    margin-top: 6px;
+    word-break: break-all;
+    max-height: 32px;
+    overflow: hidden;
+  }
   .hint {
     font-size: 12px;
     color: #8a8f98;
     margin-top: 8px;
   }
+  .view { display: none; }
+  .view.active { display: block; }
 </style>
 </head>
 <body>
 
 <div class="card">
   <h1>Generador de código QR</h1>
-  <input type="text" id="textInput" placeholder="Escribe un texto o pega un link...">
-  <div class="row">
-    <label for="size" class="hint">Tamaño:</label>
-    <select id="size">
-      <option value="150">Pequeño</option>
-      <option value="250" selected>Mediano</option>
-      <option value="350">Grande</option>
-    </select>
+
+  <div class="tabs">
+    <button class="tab active" data-view="single">Uno solo</button>
+    <button class="tab" data-view="batch">Varios a la vez</button>
   </div>
-  <button id="generateBtn">Generar QR</button>
-  <div id="qrcode"></div>
-  <button id="downloadBtn">Descargar PNG</button>
+
+  <!-- Modo individual -->
+  <div class="view active" id="view-single">
+    <input type="text" id="textInput" placeholder="Escribe un texto o pega un link...">
+    <div class="row">
+      <label for="size" class="hint">Tamaño:</label>
+      <select id="size">
+        <option value="150">Pequeño</option>
+        <option value="250" selected>Mediano</option>
+        <option value="350">Grande</option>
+      </select>
+    </div>
+    <button class="primary" id="generateBtn">Generar QR</button>
+    <div id="qrcode"></div>
+    <button class="secondary" id="downloadBtn">Descargar PNG</button>
+  </div>
+
+  <!-- Modo por lotes -->
+  <div class="view" id="view-batch">
+    <textarea id="batchInput" placeholder="Pega un link o texto por línea, por ejemplo:&#10;https://ejemplo.com&#10;https://otro-sitio.com&#10;https://mas-links.com"></textarea>
+    <div class="row">
+      <label for="batchSize" class="hint">Tamaño:</label>
+      <select id="batchSize">
+        <option value="150">Pequeño</option>
+        <option value="250" selected>Mediano</option>
+        <option value="350">Grande</option>
+      </select>
+    </div>
+    <button class="primary" id="batchGenerateBtn">Generar todos</button>
+    <div class="grid" id="batchGrid"></div>
+    <button class="secondary" id="batchDownloadBtn">Descargar todos (ZIP)</button>
+  </div>
+
 </div>
 
 <script>
+  // ---- Tabs ----
+  const tabs = document.querySelectorAll('.tab');
+  const views = document.querySelectorAll('.view');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      views.forEach(v => v.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('view-' + tab.dataset.view).classList.add('active');
+    });
+  });
+
+  // ---- Modo individual ----
   const qrcodeDiv = document.getElementById('qrcode');
   const textInput = document.getElementById('textInput');
   const sizeSelect = document.getElementById('size');
   const generateBtn = document.getElementById('generateBtn');
   const downloadBtn = document.getElementById('downloadBtn');
-  let qr = null;
 
   function generate() {
     const text = textInput.value.trim();
@@ -124,7 +221,7 @@
     }
     qrcodeDiv.innerHTML = '';
     const size = parseInt(sizeSelect.value, 10);
-    qr = new QRCode(qrcodeDiv, {
+    new QRCode(qrcodeDiv, {
       text: text,
       width: size,
       height: size,
@@ -149,6 +246,89 @@
   textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') generate();
   });
+
+  // ---- Modo por lotes ----
+  const batchInput = document.getElementById('batchInput');
+  const batchSizeSelect = document.getElementById('batchSize');
+  const batchGenerateBtn = document.getElementById('batchGenerateBtn');
+  const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+  const batchGrid = document.getElementById('batchGrid');
+  let batchItems = [];
+
+  function slugify(text, index) {
+    const slug = text
+      .replace(/^https?:\/\//, '')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase()
+      .slice(0, 40);
+    return slug ? `${index + 1}-${slug}` : `qr-${index + 1}`;
+  }
+
+  function batchGenerate() {
+    const lines = batchInput.value
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    if (lines.length === 0) {
+      batchInput.focus();
+      return;
+    }
+
+    batchGrid.innerHTML = '';
+    batchItems = [];
+    const size = parseInt(batchSizeSelect.value, 10);
+
+    lines.forEach((line, index) => {
+      const item = document.createElement('div');
+      item.className = 'grid-item';
+      const qrHolder = document.createElement('div');
+      item.appendChild(qrHolder);
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = line;
+      item.appendChild(label);
+      batchGrid.appendChild(item);
+
+      new QRCode(qrHolder, {
+        text: line,
+        width: size,
+        height: size,
+        colorDark: '#1a1a1a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      batchItems.push({ text: line, filename: slugify(line, index) + '.png', holder: qrHolder });
+    });
+
+    batchDownloadBtn.style.display = 'block';
+  }
+
+  async function batchDownload() {
+    if (batchItems.length === 0) return;
+    const zip = new JSZip();
+
+    // Dar tiempo a que los canvas terminen de pintarse
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    batchItems.forEach(item => {
+      const canvas = item.holder.querySelector('canvas');
+      if (!canvas) return;
+      const dataUrl = canvas.toDataURL('image/png').split(',')[1];
+      zip.file(item.filename, dataUrl, { base64: true });
+    });
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.download = 'codigos-qr.zip';
+    link.href = URL.createObjectURL(blob);
+    link.click();
+  }
+
+  batchGenerateBtn.addEventListener('click', batchGenerate);
+  batchDownloadBtn.addEventListener('click', batchDownload);
 </script>
 
 </body>
